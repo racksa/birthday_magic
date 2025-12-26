@@ -106,8 +106,14 @@ class Particle {
         this.y += this.vy;
     }
     draw() {
+        ctx.shadowBlur = 5;          // Adds a soft glow
+        ctx.shadowColor = this.color; // Glow matches the particle color
         ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.size, this.size);
+        // Use an arc (circle) instead of a square for a smoother look
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 1.5, 0, Math.PI * 2); 
+        ctx.fill();
+        ctx.shadowBlur = 0;           // Reset glow for performance
     }
 }
 
