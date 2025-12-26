@@ -2,41 +2,57 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>For Huang Yueqi | Particle Magic & Music</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>For Huang Yueqi | Mobile Magic</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        canvas { display: block; }
-        #video-preview { position: fixed; bottom: 10px; right: 10px; width: 120px; height: 90px; border: 1px solid #333; transform: scaleX(-1); border-radius: 8px; opacity: 0.5; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; touch-action: none; }
+        
+        /* Smaller preview for mobile */
+        #video-preview { position: fixed; bottom: 10px; right: 10px; width: 80px; height: 60px; border: 1px solid #444; transform: scaleX(-1); border-radius: 6px; opacity: 0.4; z-index: 5; }
+        
         #hint { 
-            position: fixed; top: 20px; left: 20px; 
-            color: rgba(255,255,255,0.8); 
-            background: rgba(0,0,0,0.6); 
-            padding: 10px 15px; 
+            position: fixed; top: 15px; left: 15px; right: 15px;
+            color: rgba(255,255,255,0.9); 
+            background: rgba(0,0,0,0.7); 
+            padding: 8px 12px; 
             border-radius: 8px; 
             pointer-events: none; 
-            font-size: 16px;
+            font-size: 14px;
             z-index: 10;
+            text-align: center;
+        }
+
+        /* Mobile Overlay to ensure user interaction */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); color: gold;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; cursor: pointer; text-align: center; padding: 20px;
         }
     </style>
 </head>
 <body>
 
-<div id="hint">
-    🖐️ Show "5" fingers to start the music & magic!
+<div id="start-overlay">
+    <h2>Birthday Magic</h2>
+    <p>Tap to start camera & music</p>
+    <small>(Wait for camera to load after tapping)</small>
 </div>
-<video id="video-preview" autoplay></video>
+
+<div id="hint" style="display:none;">
+    🖐️ Give me 5 to start!
+</div>
+
+<video id="video-preview" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 
-<!-- <audio id="birthday-music" loop>
-    <source src="https://upload.wikimedia.org/wikipedia/commons/b/bd/Happy_Birthday_To_You.ogg" type="audio/ogg">
-    Your browser does not support the audio element.
-</audio> -->
-
 <audio id="birthday-music" loop>
+    <source src="https://upload.wikimedia.org/wikipedia/commons/b/bd/Happy_Birthday_To_You.ogg" type="audio/ogg">
     <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
-    </audio>
+</audio>
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -44,6 +60,7 @@ const ctx = canvas.getContext('2d');
 const videoElement = document.getElementById('video-preview');
 const hintElement = document.getElementById('hint');
 const bdayMusic = document.getElementById('birthday-music');
+const overlay = document.getElementById('start-overlay');
 
 const offCanvas = document.createElement('canvas');
 const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
@@ -52,10 +69,13 @@ let particles = [];
 let fireworks = [];
 let currentMode = "";
 let gameStarted = false;
+let cameraStarted = false;
 
 function resize() {
     canvas.width = offCanvas.width = window.innerWidth;
     canvas.height = offCanvas.height = window.innerHeight;
+    // Re-scan current pattern on rotate/resize
+    if(currentMode) scanPattern(currentMode);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -71,7 +91,7 @@ class Particle {
         this.ease = 0.08 + Math.random() * 0.05;
         this.friction = 0.85;
         this.color = `hsl(${Math.random() * 40 + 200}, 100%, 70%)`; 
-        this.size = Math.random() * 2 + 1;
+        this.size = Math.random() * 1.5 + 1; // Smaller particles for mobile density
     }
     update() {
         this.vx += (this.destX - this.x) * this.ease;
@@ -94,9 +114,9 @@ class Firework {
         this.particles = [];
         const palettes = [`hsl(240, 100%, 70%)`, `hsl(270, 100%, 70%)`, `hsl(0, 0%, 100%)`];
         const color = palettes[Math.floor(Math.random() * palettes.length)];
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 40; i++) { // Reduced count for mobile performance
             const angle = Math.random() * Math.PI * 2;
-            const speed = Math.random() * 6 + 2;
+            const speed = Math.random() * 5 + 2;
             this.particles.push({
                 x: x, y: y,
                 vx: Math.cos(angle) * speed,
@@ -109,7 +129,7 @@ class Firework {
     update() {
         this.particles.forEach(p => {
             p.x += p.vx; p.y += p.vy;
-            p.vy += 0.05; p.alpha -= 0.015;
+            p.vy += 0.06; p.alpha -= 0.02;
         });
         this.particles = this.particles.filter(p => p.alpha > 0);
     }
@@ -118,7 +138,7 @@ class Firework {
             ctx.globalAlpha = p.alpha;
             ctx.fillStyle = p.color;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
             ctx.fill();
         });
         ctx.globalAlpha = 1;
@@ -130,7 +150,7 @@ function scanPattern(type) {
     currentMode = type;
 
     if (type === 'fireworks') {
-        fireworks.push(new Firework(Math.random() * canvas.width, Math.random() * canvas.height * 0.5));
+        fireworks.push(new Firework(Math.random() * canvas.width, Math.random() * canvas.height * 0.4));
         return; 
     }
 
@@ -138,23 +158,29 @@ function scanPattern(type) {
     offCtx.fillStyle = "white";
     offCtx.textAlign = "center";
 
+    // Scalable font sizes based on screen width
+    const baseSize = canvas.width < 600 ? canvas.width * 0.1 : 70;
+
     if (type === 'intro') {
-        offCtx.font = "bold 80px sans-serif";
+        offCtx.font = `bold ${baseSize}px sans-serif`;
         offCtx.fillText("Give me five", canvas.width/2, canvas.height/2);
     } else if (type === 'text') {
-        offCtx.font = "bold 65px sans-serif";
-        offCtx.fillText("Happy Birthday", canvas.width/2, canvas.height/2 - 40);
+        offCtx.font = `bold ${baseSize * 0.8}px sans-serif`;
+        offCtx.fillText("Happy Birthday", canvas.width/2, canvas.height/2 - 30);
         offCtx.fillText("Huang Yueqi!", canvas.width/2, canvas.height/2 + 40);
     } else if (type === 'combo') {
-        offCtx.font = "200px serif";
-        offCtx.fillText("🎂", canvas.width/2 - 160, canvas.height/2 + 80);
-        offCtx.fillText("🐂", canvas.width/2 + 160, canvas.height/2 + 80);
+        const emojiSize = canvas.width < 600 ? canvas.width * 0.35 : 200;
+        offCtx.font = `${emojiSize}px serif`;
+        offCtx.fillText("🎂", canvas.width/2 - (emojiSize/1.8), canvas.height/2 + 50);
+        offCtx.fillText("🐂", canvas.width/2 + (emojiSize/1.8), canvas.height/2 + 50);
     } 
 
     const pixels = offCtx.getImageData(0, 0, canvas.width, canvas.height).data;
     const newPoints = [];
-    for (let y = 0; y < canvas.height; y += 5) {
-        for (let x = 0; x < canvas.width; x += 5) {
+    const step = canvas.width < 600 ? 6 : 5; // Faster scanning for mobile
+    
+    for (let y = 0; y < canvas.height; y += step) {
+        for (let x = 0; x < canvas.width; x += step) {
             if (pixels[(y * canvas.width + x) * 4 + 3] > 128) newPoints.push({x, y});
         }
     }
@@ -167,7 +193,7 @@ function scanPattern(type) {
 }
 
 const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
+hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5 }); // Complexity 0 is faster for mobile
 
 hands.onResults((results) => {
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -179,9 +205,7 @@ hands.onResults((results) => {
         if (!gameStarted) {
             if (totalFingers >= 5) {
                 gameStarted = true;
-                // --- Start Music ---
-                bdayMusic.play().catch(e => console.log("Audio play blocked:", e));
-                // -------------------
+                bdayMusic.play().catch(() => {});
                 fireworks.push(new Firework(canvas.width/2, canvas.height/2));
                 scanPattern('text');
                 hintElement.innerHTML = "☝️ 1: Text | ✌️ 2: Cake & Buffalo | 🖐️ 4+: Fireworks";
@@ -196,10 +220,21 @@ hands.onResults((results) => {
 });
 
 const camera = new Camera(videoElement, {
-    onFrame: async () => await hands.send({image: videoElement}),
-    width: 640, height: 480
+    onFrame: async () => { if(cameraStarted) await hands.send({image: videoElement}); },
+    width: {ideal: 640}, height: {ideal: 480},
+    facingMode: 'user' // Use front camera
 });
-camera.start();
+
+// Mobile Start Trigger
+overlay.addEventListener('click', () => {
+    overlay.style.display = 'none';
+    hintElement.style.display = 'block';
+    bdayMusic.load(); // Prime audio
+    cameraStarted = true;
+    camera.start();
+    scanPattern('intro');
+    animate();
+});
 
 function animate() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
@@ -211,9 +246,6 @@ function animate() {
     });
     requestAnimationFrame(animate);
 }
-
-scanPattern('intro');
-animate();
 </script>
 </body>
 </html>
