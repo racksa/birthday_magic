@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>For Huang Yueqi | Particle Magic & Music</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        #video-preview { position: fixed; bottom: 10px; right: 10px; width: 120px; height: 90px; border: 1px solid #333; transform: scaleX(-1); border-radius: 8px; opacity: 0.5; }
+        #hint { 
+            position: fixed; top: 20px; left: 20px; 
+            color: rgba(255,255,255,0.8); 
+            background: rgba(0,0,0,0.6); 
+            padding: 10px 15px; 
+            border-radius: 8px; 
+            pointer-events: none; 
+            font-size: 16px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="hint">
+    🖐️ Show "5" fingers to start the music & magic!
+</div>
+<video id="video-preview" autoplay></video>
+<canvas id="canvas"></canvas>
+
+<!-- <audio id="birthday-music" loop>
+    <source src="https://upload.wikimedia.org/wikipedia/commons/b/bd/Happy_Birthday_To_You.ogg" type="audio/ogg">
+    Your browser does not support the audio element.
+</audio> -->
+
+<audio id="birthday-music" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+    </audio>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const videoElement = document.getElementById('video-preview');
+const hintElement = document.getElementById('hint');
+const bdayMusic = document.getElementById('birthday-music');
+
+const offCanvas = document.createElement('canvas');
+const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+let particles = [];
+let fireworks = [];
+let currentMode = "";
+let gameStarted = false;
+
+function resize() {
+    canvas.width = offCanvas.width = window.innerWidth;
+    canvas.height = offCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Particle {
+    constructor(x, y) {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.destX = x;
+        this.destY = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.ease = 0.08 + Math.random() * 0.05;
+        this.friction = 0.85;
+        this.color = `hsl(${Math.random() * 40 + 200}, 100%, 70%)`; 
+        this.size = Math.random() * 2 + 1;
+    }
+    update() {
+        this.vx += (this.destX - this.x) * this.ease;
+        this.vy += (this.destY - this.y) * this.ease;
+        this.vx *= this.friction;
+        this.vy *= this.friction;
+        this.x += this.vx;
+        this.y += this.vy;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+class Firework {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.particles = [];
+        const palettes = [`hsl(240, 100%, 70%)`, `hsl(270, 100%, 70%)`, `hsl(0, 0%, 100%)`];
+        const color = palettes[Math.floor(Math.random() * palettes.length)];
+        for (let i = 0; i < 60; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 6 + 2;
+            this.particles.push({
+                x: x, y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                alpha: 1,
+                color: color
+            });
+        }
+    }
+    update() {
+        this.particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            p.vy += 0.05; p.alpha -= 0.015;
+        });
+        this.particles = this.particles.filter(p => p.alpha > 0);
+    }
+    draw() {
+        this.particles.forEach(p => {
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+    }
+}
+
+function scanPattern(type) {
+    if (currentMode === type && type !== 'fireworks') return;
+    currentMode = type;
+
+    if (type === 'fireworks') {
+        fireworks.push(new Firework(Math.random() * canvas.width, Math.random() * canvas.height * 0.5));
+        return; 
+    }
+
+    offCtx.clearRect(0, 0, canvas.width, canvas.height);
+    offCtx.fillStyle = "white";
+    offCtx.textAlign = "center";
+
+    if (type === 'intro') {
+        offCtx.font = "bold 80px sans-serif";
+        offCtx.fillText("Give me five", canvas.width/2, canvas.height/2);
+    } else if (type === 'text') {
+        offCtx.font = "bold 65px sans-serif";
+        offCtx.fillText("Happy Birthday", canvas.width/2, canvas.height/2 - 40);
+        offCtx.fillText("Huang Yueqi!", canvas.width/2, canvas.height/2 + 40);
+    } else if (type === 'combo') {
+        offCtx.font = "200px serif";
+        offCtx.fillText("🎂", canvas.width/2 - 160, canvas.height/2 + 80);
+        offCtx.fillText("🐂", canvas.width/2 + 160, canvas.height/2 + 80);
+    } 
+
+    const pixels = offCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const newPoints = [];
+    for (let y = 0; y < canvas.height; y += 5) {
+        for (let x = 0; x < canvas.width; x += 5) {
+            if (pixels[(y * canvas.width + x) * 4 + 3] > 128) newPoints.push({x, y});
+        }
+    }
+
+    if (particles.length > newPoints.length) particles = particles.slice(0, newPoints.length);
+    newPoints.forEach((pt, i) => {
+        if (particles[i]) { particles[i].destX = pt.x; particles[i].destY = pt.y; }
+        else { particles.push(new Particle(pt.x, pt.y)); }
+    });
+}
+
+const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
+
+hands.onResults((results) => {
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const lm = results.multiHandLandmarks[0];
+        const fingers = [8, 12, 16, 20].filter(i => lm[i].y < lm[i-2].y).length;
+        const thumbOpen = Math.abs(lm[4].x - lm[3].x) > 0.05; 
+        const totalFingers = fingers + (thumbOpen ? 1 : 0);
+        
+        if (!gameStarted) {
+            if (totalFingers >= 5) {
+                gameStarted = true;
+                // --- Start Music ---
+                bdayMusic.play().catch(e => console.log("Audio play blocked:", e));
+                // -------------------
+                fireworks.push(new Firework(canvas.width/2, canvas.height/2));
+                scanPattern('text');
+                hintElement.innerHTML = "☝️ 1: Text | ✌️ 2: Cake & Buffalo | 🖐️ 4+: Fireworks";
+            } else { scanPattern('intro'); }
+            return;
+        }
+
+        if (fingers === 1) scanPattern('text');
+        else if (fingers === 2) scanPattern('combo');
+        else if (fingers >= 4) scanPattern('fireworks');
+    }
+});
+
+const camera = new Camera(videoElement, {
+    onFrame: async () => await hands.send({image: videoElement}),
+    width: 640, height: 480
+});
+camera.start();
+
+function animate() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => { p.update(); p.draw(); });
+    fireworks.forEach((f, i) => {
+        f.update(); f.draw();
+        if (f.particles.length === 0) fireworks.splice(i, 1);
+    });
+    requestAnimationFrame(animate);
+}
+
+scanPattern('intro');
+animate();
+</script>
+</body>
+</html>
